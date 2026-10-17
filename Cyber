@@ -1,0 +1,184 @@
+
+/* ==========================================
+   CYBERKINGS MOVIES
+   Redirect Guard + Trailer Downloads
+   ========================================== */
+
+(() => {
+  "use strict";
+
+  const ALLOWED_DOMAINS = [
+    window.location.hostname,
+    "youtube.com",
+    "www.youtube.com",
+    "youtu.be"
+  ];
+
+  // Add confirmed unwanted domains here.
+  const BLOCKED_DOMAINS = [];
+
+  function matchesDomain(host, domain) {
+    return host === domain || host.endsWith("." + domain);
+  }
+
+  function isAllowed(host) {
+    return ALLOWED_DOMAINS.some(domain =>
+      matchesDomain(host, domain)
+    );
+  }
+
+  function isBlocked(host) {
+    return BLOCKED_DOMAINS.some(domain =>
+      matchesDomain(host, domain)
+    );
+  }
+
+  // Guard links that open a new tab.
+  document.addEventListener("click", event => {
+    const element = event.target;
+    if (!element.closest) return;
+
+    const link = element.closest("a[href]");
+    if (!link || link.target !== "_blank") return;
+
+    let url;
+
+    try {
+      url = new URL(link.href, location.href);
+    } catch {
+      return;
+    }
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+
+    const host = url.hostname.toLowerCase();
+
+    if (isBlocked(host) || !isAllowed(host)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      console.warn("[CyberKings] Unapproved link:", host);
+      alert("CyberKings Movies: This external link is not approved.");
+    }
+  }, true);
+
+  // Create a download button for an authorized trailer URL.
+  function createTrailerDownloadButton(trailerUrl, filename) {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.textContent = "⬇ Download Trailer";
+    button.className = "ck-download-trailer";
+
+    button.addEventListener("click", async () => {
+      let url;
+
+      try {
+        url = new URL(trailerUrl, location.href);
+      } catch {
+        alert("This trailer URL is invalid.");
+        return;
+      }
+
+      if (!["http:", "https:"].includes(url.protocol)) {
+        alert("This trailer source is not supported.");
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = "Preparing trailer...";
+
+      try {
+        // Fetch works only when the source allows browser CORS access.
+        const response = await fetch(url.href);
+
+        if (!response.ok) {
+          throw new Error("Trailer download unavailable");
+        }
+
+        const blob = await response.blob();
+
+        if (!blob.type.startsWith("video/")) {
+          throw new Error("The source did not return a video file");
+        }
+
+        const objectUrl = URL.createObjectURL(blob);
+        const downloadLink = document.createElement("a");
+
+        downloadLink.href = objectUrl;
+        downloadLink.download = filename || "cyberkings-trailer.mp4";
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        downloadLink.remove();
+
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+
+        button.textContent = "✓ Download started";
+      } catch (error) {
+        console.error("[CyberKings] Download error:", error);
+        button.textContent = "⬇ Open Trailer";
+
+        alert(
+          "Direct download is unavailable for this source. " +
+          "Opening the trailer instead."
+        );
+
+        // Open only the selected trailer URL, not an unrelated ad URL.
+        window.open(url.href, "_blank", "noopener,noreferrer");
+      } finally {
+        button.disabled = false;
+
+        if (button.textContent === "Preparing trailer...") {
+          button.textContent = "⬇ Download Trailer";
+        }
+      }
+    });
+
+    return button;
+  }
+
+  // Public helper for your existing movie-card code.
+  // Example:
+  // const button = CyberKings.createTrailerDownloadButton(
+  //   movie.trailerDownloadUrl,
+  //   "movie-trailer.mp4"
+  // );
+  window.CyberKings = window.CyberKings || {};
+  window.CyberKings.createTrailerDownloadButton =
+    createTrailerDownloadButton;
+
+  // Button styling.
+  const style = document.createElement("style");
+  style.textContent = `
+    .ck-download-trailer {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 18px;
+      margin: 8px 4px;
+      border: 1px solid #00f7ff;
+      border-radius: 10px;
+      background: #050505;
+      color: #00f7ff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .ck-download-trailer:disabled {
+      opacity: .65;
+      cursor: wait;
+    }
+
+    .ck-download-trailer:focus-visible {
+      outline: 2px solid #39ff14;
+      outline-offset: 3px;
+    }
+  `;
+
+  document.head.appendChild(style);
+
+  console.log("[CyberKings] Movie tools loaded.");
+})();
