@@ -1,184 +1,174 @@
 
-/* ==========================================
-   CYBERKINGS MOVIES
-   Redirect Guard + Trailer Downloads
-   ========================================== */
+"use client";
 
-(() => {
-  "use strict";
+import { useMemo, useState } from "react";
+import { Film, Search, Play, Sparkles, Send, X, Download, ExternalLink } from "lucide-react";
 
-  const ALLOWED_DOMAINS = [
-    window.location.hostname,
-    "youtube.com",
-    "www.youtube.com",
-    "youtu.be"
-  ];
+const MOVIES = [
+  { id: 1, title: "Shadow Protocol", year: 2025, genre: "Action", description: "A young hacker discovers a digital conspiracy.", trailer: "https://www.youtube.com/results?search_query=action+movie+official+trailers", download: "", color: "#8d245b" },
+  { id: 2, title: "Beyond the Unknown", year: 2025, genre: "Sci-Fi", description: "A distant discovery changes humanity's future.", trailer: "https://www.youtube.com/results?search_query=sci+fi+movie+official+trailers", download: "", color: "#07566b" },
+  { id: 3, title: "Midnight Files", year: 2024, genre: "Mystery", description: "An unexplained event leaves a town searching for answers.", trailer: "https://www.youtube.com/results?search_query=mystery+movie+official+trailers", download: "", color: "#523078" },
+  { id: 4, title: "The Last Signal", year: 2025, genre: "Thriller", description: "One transmission could change everything.", trailer: "https://www.youtube.com/results?search_query=thriller+movie+official+trailers", download: "", color: "#78372c" },
+  { id: 5, title: "Kingdom of Stars", year: 2024, genre: "Fantasy", description: "A journey begins beyond the known world.", trailer: "https://www.youtube.com/results?search_query=fantasy+movie+official+trailers", download: "", color: "#176448" },
+  { id: 6, title: "Hidden Truth", year: 2025, genre: "Drama", description: "A family secret changes several lives.", trailer: "https://www.youtube.com/results?search_query=drama+movie+official+trailers", download: "", color: "#79521d" }
+];
 
-  // Add confirmed unwanted domains here.
-  const BLOCKED_DOMAINS = [];
+const CATEGORIES = ["All", "Action", "Sci-Fi", "Mystery", "Thriller", "Fantasy", "Drama"];
 
-  function matchesDomain(host, domain) {
-    return host === domain || host.endsWith("." + domain);
-  }
+export default function Home() {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("All");
+  const [selected, setSelected] = useState<(typeof MOVIES)[number] | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [reply, setReply] = useState("Welcome to CyberKings AI ⚡ Ask me about movie genres or recommendations.");
+  const [sending, setSending] = useState(false);
 
-  function isAllowed(host) {
-    return ALLOWED_DOMAINS.some(domain =>
-      matchesDomain(host, domain)
-    );
-  }
+  const filtered = useMemo(() => MOVIES.filter(m =>
+    (category === "All" || m.genre === category) &&
+    `${m.title} ${m.genre} ${m.year}`.toLowerCase().includes(query.toLowerCase())
+  ), [query, category]);
 
-  function isBlocked(host) {
-    return BLOCKED_DOMAINS.some(domain =>
-      matchesDomain(host, domain)
-    );
-  }
-
-  // Guard links that open a new tab.
-  document.addEventListener("click", event => {
-    const element = event.target;
-    if (!element.closest) return;
-
-    const link = element.closest("a[href]");
-    if (!link || link.target !== "_blank") return;
-
-    let url;
-
+  async function askAI(e: React.FormEvent) {
+    e.preventDefault();
+    const text = message.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setReply("Thinking…");
+    setMessage("");
     try {
-      url = new URL(link.href, location.href);
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text })
+      });
+      const data = await res.json();
+      setReply(data.answer || data.error || "No reply received.");
     } catch {
-      return;
+      setReply("Connection failed. Check your AI API route and try again.");
+    } finally {
+      setSending(false);
     }
-
-    if (!["http:", "https:"].includes(url.protocol)) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-
-    const host = url.hostname.toLowerCase();
-
-    if (isBlocked(host) || !isAllowed(host)) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      console.warn("[CyberKings] Unapproved link:", host);
-      alert("CyberKings Movies: This external link is not approved.");
-    }
-  }, true);
-
-  // Create a download button for an authorized trailer URL.
-  function createTrailerDownloadButton(trailerUrl, filename) {
-    const button = document.createElement("button");
-
-    button.type = "button";
-    button.textContent = "⬇ Download Trailer";
-    button.className = "ck-download-trailer";
-
-    button.addEventListener("click", async () => {
-      let url;
-
-      try {
-        url = new URL(trailerUrl, location.href);
-      } catch {
-        alert("This trailer URL is invalid.");
-        return;
-      }
-
-      if (!["http:", "https:"].includes(url.protocol)) {
-        alert("This trailer source is not supported.");
-        return;
-      }
-
-      button.disabled = true;
-      button.textContent = "Preparing trailer...";
-
-      try {
-        // Fetch works only when the source allows browser CORS access.
-        const response = await fetch(url.href);
-
-        if (!response.ok) {
-          throw new Error("Trailer download unavailable");
-        }
-
-        const blob = await response.blob();
-
-        if (!blob.type.startsWith("video/")) {
-          throw new Error("The source did not return a video file");
-        }
-
-        const objectUrl = URL.createObjectURL(blob);
-        const downloadLink = document.createElement("a");
-
-        downloadLink.href = objectUrl;
-        downloadLink.download = filename || "cyberkings-trailer.mp4";
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        downloadLink.remove();
-
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-
-        button.textContent = "✓ Download started";
-      } catch (error) {
-        console.error("[CyberKings] Download error:", error);
-        button.textContent = "⬇ Open Trailer";
-
-        alert(
-          "Direct download is unavailable for this source. " +
-          "Opening the trailer instead."
-        );
-
-        // Open only the selected trailer URL, not an unrelated ad URL.
-        window.open(url.href, "_blank", "noopener,noreferrer");
-      } finally {
-        button.disabled = false;
-
-        if (button.textContent === "Preparing trailer...") {
-          button.textContent = "⬇ Download Trailer";
-        }
-      }
-    });
-
-    return button;
   }
 
-  // Public helper for your existing movie-card code.
-  // Example:
-  // const button = CyberKings.createTrailerDownloadButton(
-  //   movie.trailerDownloadUrl,
-  //   "movie-trailer.mp4"
-  // );
-  window.CyberKings = window.CyberKings || {};
-  window.CyberKings.createTrailerDownloadButton =
-    createTrailerDownloadButton;
+  return (
+    <main>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap');
+        :root{--bg:#070910;--panel:#101522;--cyan:#00f7ff;--green:#39ff88;--muted:#929bb1}
+        *{box-sizing:border-box}
+        html{scroll-behavior:smooth}
+        body{margin:0;background:var(--bg);color:#f3f6ff;font-family:Inter,sans-serif}
+        button,input{font:inherit}button,a{cursor:pointer}a{color:inherit;text-decoration:none}
+        button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+        .top{height:68px;padding:0 7%;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ffffff12;position:sticky;top:0;background:#070910ed;backdrop-filter:blur(14px);z-index:10}
+        .brand{font:800 17px Orbitron,sans-serif;letter-spacing:-.5px}.cyan{color:var(--cyan)}
+        .nav{display:flex;gap:24px;align-items:center;font-size:12px;color:#c4cada}
+        .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 15px;border-radius:8px;border:1px solid #30384b;background:#111724;color:#eefaff;font-size:12px;font-weight:700}
+        .primary{background:var(--cyan);color:#061015;border-color:var(--cyan)}
+        .hero{min-height:440px;padding:80px 9%;display:flex;align-items:center;position:relative;overflow:hidden;background:radial-gradient(ellipse at 82% 40%,#063c4b77,transparent 38%),linear-gradient(135deg,#070910,#0a1320)}
+        .hero:after{content:"";position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(#00f7ff12 1px,transparent 1px),linear-gradient(90deg,#00f7ff12 1px,transparent 1px);background-size:42px 42px;mask-image:linear-gradient(90deg,transparent,#000)}
+        .heroText{position:relative;z-index:1;max-width:590px}.eyebrow{font:600 10px Orbitron,sans-serif;color:var(--cyan);letter-spacing:2px;margin-bottom:16px}
+        h1{font:800 clamp(38px,7vw,72px)/1.12 Orbitron,sans-serif;letter-spacing:-2px;margin:0}
+        .hero p{max-width:420px;color:var(--muted);font-size:14px;line-height:1.8;margin:20px 0 25px}
+        .actions{display:flex;flex-wrap:wrap;gap:10px}
+        .section{padding:65px 8%}.heading{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:25px}
+        h2{font:700 clamp(22px,3vw,32px) Orbitron,sans-serif;margin:0 0 9px}.muted{color:var(--muted);font-size:12px;line-height:1.7}
+        .search{height:46px;display:flex;gap:10px;align-items:center;padding:0 13px;max-width:520px;border:1px solid #282f40;background:#0e121d;border-radius:8px;color:var(--cyan)}
+        .search input{background:transparent;color:white;border:0;outline:0;min-width:0;flex:1;font-size:12px}
+        .cats{display:flex;gap:8px;overflow:auto;padding:17px 0 25px}
+        .cat{white-space:nowrap;background:#111521;color:#aeb6c8;border:1px solid #272e3e;padding:9px 13px;border-radius:7px;font-size:11px}
+        .cat.active{color:var(--cyan);border-color:#00f7ff80;background:#09252c}
+        .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px 16px}
+        .card{min-width:0}.poster{width:100%;aspect-ratio:3/4;border:1px solid #ffffff18;border-radius:9px;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:end;text-align:left;padding:14px;color:white;background:radial-gradient(circle at 65% 25%,var(--poster),transparent 44%),linear-gradient(145deg,#172032,#070910 85%);transition:.2s}
+        .poster:hover{transform:translateY(-3px);border-color:#00f7ff88}
+        .mark{position:absolute;left:13px;top:13px;font:800 13px Orbitron,sans-serif}.genre{color:var(--cyan);font:9px Orbitron,sans-serif;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+        .posterTitle{font:700 clamp(14px,1.6vw,21px)/1.3 Orbitron,sans-serif;overflow-wrap:anywhere}
+        .posterPlay{position:absolute;right:12px;top:12px;width:33px;height:33px;border-radius:50%;display:grid;place-items:center;border:1px solid #00f7ff88;background:#07131dcc;color:var(--cyan)}
+        .meta{display:flex;align-items:center;justify-content:space-between;gap:6px;padding-top:11px}.meta h3{font-size:12px;margin:0 0 5px}.meta p{font-size:10px;color:var(--muted);margin:0}
+        .empty{text-align:center;padding:40px;color:var(--muted)}
+        .banner{margin:0 8% 45px;padding:26px;display:flex;align-items:center;justify-content:space-between;gap:18px;border:1px solid #1b454b;border-radius:12px;background:linear-gradient(110deg,#092027,#0c111b)}
+        .banner p{margin:0}.footer{border-top:1px solid #202536;padding:25px 8%;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:10px}
+        .shade{position:fixed;inset:0;z-index:20;background:#02040be8;display:grid;place-items:center;padding:16px}
+        .modal{position:relative;width:min(620px,100%);max-height:90dvh;overflow:auto;display:grid;grid-template-columns:150px 1fr;gap:22px;padding:22px;background:#0d111d;border:1px solid #29374a;border-radius:13px}
+        .modal .poster{min-height:220px}.modal h2{font-size:22px;overflow-wrap:anywhere}.modal p{font-size:12px;line-height:1.8;color:var(--muted)}
+        .close{position:absolute;right:8px;top:8px;background:#171d2a;color:white;border:0;padding:8px;border-radius:7px}
+        .chat{position:fixed;right:16px;bottom:16px;z-index:30;width:min(360px,calc(100vw - 32px));background:#0c101b;border:1px solid #26444c;border-radius:13px;box-shadow:0 15px 60px #000a;overflow:hidden}
+        .chatHead{padding:14px;display:flex;align-items:center;justify-content:space-between;background:#111725;border-bottom:1px solid #252d3e}
+        .chatBody{padding:15px;min-height:100px;max-height:300px;overflow:auto;font-size:12px;line-height:1.8;color:#dce6f6;white-space:pre-wrap;overflow-wrap:anywhere}
+        .chatForm{display:flex;gap:8px;padding:10px;border-top:1px solid #252d3e}
+        .chatForm input{flex:1;min-width:0;padding:10px;border-radius:7px;background:#151b29;border:1px solid #293145;color:white;font-size:12px}
+        .chatForm button{background:var(--cyan);color:#071015;border:0;border-radius:7px;padding:0 12px}
+        @media(max-width:800px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.hero{padding:65px 6%}.section{padding:50px 6%}.banner{margin:0 6% 35px}}
+        @media(max-width:560px){.top{padding:0 5%;height:60px}.brand{font-size:14px}.nav{gap:10px;font-size:11px}.nav a:first-child{display:none}.hero{min-height:400px;padding:55px 6%}.hero p{font-size:12px}.section{padding:45px 5%}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 12px}.poster{padding:11px}.posterTitle{font-size:15px}.heading h2{font-size:22px}.banner{margin:0 5% 30px;padding:18px;align-items:flex-start;flex-direction:column}.modal{grid-template-columns:100px 1fr;gap:13px;padding:14px}.modal .poster{min-height:160px;padding:9px}.modal h2{font-size:16px}.footer{padding:22px 5%}}
+      `}</style>
 
-  // Button styling.
-  const style = document.createElement("style");
-  style.textContent = `
-    .ck-download-trailer {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 12px 18px;
-      margin: 8px 4px;
-      border: 1px solid #00f7ff;
-      border-radius: 10px;
-      background: #050505;
-      color: #00f7ff;
-      font-weight: 700;
-      cursor: pointer;
-    }
+      <header className="top">
+        <a href="#" className="brand">CYBER<span className="cyan">KINGS</span> <span style={{fontSize:9,color:"#929bb1"}}>MOVIES</span></a>
+        <nav className="nav">
+          <a href="#home">Home</a>
+          <a href="#movies">Explore</a>
+          <button className="btn" onClick={() => setChatOpen(true)}><Sparkles size={15}/> Cyber AI</button>
+        </nav>
+      </header>
 
-    .ck-download-trailer:disabled {
-      opacity: .65;
-      cursor: wait;
-    }
+      <section className="hero" id="home">
+        <div className="heroText">
+          <div className="eyebrow">● YOUR DIGITAL CINEMA</div>
+          <h1>ENTER THE<br/><span className="cyan">MOVIEVERSE.</span></h1>
+          <p>Discover your next story. Explore genres, find official trailers and chat with CyberKings AI.</p>
+          <div className="actions">
+            <a className="btn primary" href="#movies"><Play size={16} fill="currentColor"/> Explore Movies</a>
+            <button className="btn" onClick={() => setChatOpen(true)}><Sparkles size={16}/> Ask Cyber AI</button>
+          </div>
+        </div>
+      </section>
 
-    .ck-download-trailer:focus-visible {
-      outline: 2px solid #39ff14;
-      outline-offset: 3px;
-    }
-  `;
+      <section className="section" id="movies">
+        <div className="heading">
+          <div><div className="eyebrow">THE COLLECTION</div><h2>Explore <span className="cyan">Movies</span></h2><p className="muted">Find a story that matches your mood.</p></div>
+          <span className="eyebrow">{filtered.length} TITLES</span>
+        </div>
+        <div className="search"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search movies or genres..."/></div>
+        <div className="cats">{CATEGORIES.map(c => <button key={c} className={`cat ${category===c?"active":""}`} onClick={() => setCategory(c)}>{c}</button>)}</div>
+        <div className="grid">
+          {filtered.map(m => <article className="card" key={m.id}>
+            <button className="poster" style={{"--poster":m.color} as React.CSSProperties} onClick={() => setSelected(m)}>
+              <span className="mark">CK<span className="cyan">+</span></span>
+              <span className="posterPlay"><Play size={15} fill="currentColor"/></span>
+              <span className="genre">{m.genre}</span><span className="posterTitle">{m.title}</span>
+            </button>
+            <div className="meta"><div><h3>{m.title}</h3><p>{m.year} · {m.genre}</p></div><button className="btn" style={{padding:7}} aria-label="Movie details" onClick={() => setSelected(m)}><ExternalLink size={14}/></button></div>
+          </article>)}
+        </div>
+        {filtered.length===0 && <div className="empty">No matching titles. Try another search.</div>}
+        <p className="muted" style={{marginTop:25}}>Demo movie entries. Connect a licensed movie database API for real titles and posters.</p>
+      </section>
 
-  document.head.appendChild(style);
+      <section className="banner">
+        <div><div className="eyebrow">INTELLIGENCE ONLINE</div><h2>Your movie guide. <span className="cyan">Powered by AI.</span></h2><p className="muted">Ask for movie recommendations and genre ideas.</p></div>
+        <button className="btn primary" onClick={() => setChatOpen(true)}><Sparkles size={16}/> Chat with AI</button>
+      </section>
 
-  console.log("[CyberKings] Movie tools loaded.");
-})();
+      <footer className="footer"><b>CYBER<span className="cyan">KINGS</span></b><span>DISCOVER STORIES. STAY CURIOUS.</span><span>© {new Date().getFullYear()} CyberKings Movies</span></footer>
+
+      {selected && <div className="shade" onClick={() => setSelected(null)}>
+        <section className="modal" onClick={e => e.stopPropagation()}>
+          <button className="close" onClick={() => setSelected(null)} aria-label="Close"><X size={18}/></button>
+          <div className="poster" style={{"--poster":selected.color} as React.CSSProperties}><span className="mark">CK<span className="cyan">+</span></span><span className="posterTitle">{selected.title}</span></div>
+          <div style={{alignSelf:"center"}}>
+            <div className="eyebrow">{selected.genre} · {selected.year}</div><h2>{selected.title}</h2><p>{selected.description}</p>
+            <a className="btn primary" href={selected.trailer} target="_blank" rel="noopener noreferrer"><Play size={15} fill="currentColor"/> Find Official Trailer</a>
+            {selected.download ? <p><a className="btn" href={selected.download} target="_blank" rel="noopener noreferrer"><Download size={15}/> Download</a></p> : <p><Download size={14}/> No authorized download link added yet.</p>}
+          </div>
+        </section>
+      </div>}
+
+      {chatOpen && <section className="chat">
+        <header className="chatHead"><div><b><Sparkles size={15} style={{display:"inline",color:"var(--cyan)"}}/> CyberKings AI</b><div className="eyebrow" style={{margin:"5px 0 0",fontSize:8}}>ASSISTANT ONLINE</div></div><button className="close" style={{position:"static"}} onClick={() => setChatOpen(false)}><X size={17}/></button></header>
+        <div className="chatBody">{reply}</div>
+        <form className="chatForm" onSubmit={askAI}><input value={message} onChange={e => setMessage(e.target.value)} placeholder="Ask CyberKings AI..." maxLength={2000}/><button disabled={sending||!message.trim()} aria-label="Send"><Send size={17}/></button></form>
+      </section>}
+    </main>
+  );
+}
